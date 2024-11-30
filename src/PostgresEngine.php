@@ -16,6 +16,10 @@ use ScoutEngines\Postgres\TsQuery\PhraseToTsQuery;
 use ScoutEngines\Postgres\TsQuery\PlainToTsQuery;
 use ScoutEngines\Postgres\TsQuery\ToTsQuery;
 
+/**
+ * @template TModel of \Illuminate\Database\Eloquent\Model
+ * @template TID of int|string
+ */
 class PostgresEngine extends Engine
 {
     /**
@@ -60,7 +64,7 @@ class PostgresEngine extends Engine
     /**
      * Update the given models in the index.
      *
-     * @param  \Illuminate\Database\Eloquent\Collection  $models
+     * @param  \Illuminate\Database\Eloquent\Collection<int, TModel>  $models
      * @return void
      */
     public function update($models)
@@ -72,6 +76,203 @@ class PostgresEngine extends Engine
         foreach ($models as $model) {
             $this->performUpdate($model);
         }
+    }
+
+    /**
+     * Remove the given model from the index.
+     *
+     * @param  \Illuminate\Database\Eloquent\Collection<int, TModel>  $models
+     * @return void
+     */
+    public function delete($models)
+    {
+        $model = $models->first();
+
+        if ($model) {
+            if (! $this->shouldMaintainIndex($model)) {
+                return;
+            }
+
+            $indexColumn = $this->getIndexColumn($model);
+            $key = $model->getKeyName();
+
+            $ids = $models->pluck($key)->all();
+
+            $this->database
+                ->table($model->searchableAs())
+                ->whereIn($key, $ids)
+                ->update([$indexColumn => null]);
+
+        }
+    }
+
+    /**
+     * Perform the given search on the engine.
+     *
+     * @param  \Laravel\Scout\Builder<TModel>  $builder
+     * @return mixed
+     */
+    public function search(Builder $builder)
+    {
+        return $this->performSearch($builder, $builder->limit);
+    }
+
+    /**
+     * Perform the given search on the engine.
+     *
+     * @param  \Laravel\Scout\Builder<TModel>  $builder
+     * @param  int  $perPage
+     * @param  int  $page
+     * @return mixed
+     */
+    public function paginate(Builder $builder, $perPage, $page)
+    {
+        return $this->performSearch($builder, $perPage, $page);
+    }
+
+    /**
+     * Get the total count from a raw result returned by the engine.
+     *
+     * @param  mixed  $results
+     * @return int
+     */
+    public function getTotalCount($results)
+    {
+        if (empty($results)) {
+            return 0;
+        }
+
+        /** @var array<int, object> $results */
+        /** @var object{'id': mixed, 'rank': string, 'total_count': int} $result */
+        $result = Arr::first($results);
+
+        return (int) $result->total_count;
+    }
+
+    /**
+     * Returns the default query method.
+     *
+     * @param  string  $query
+     * @param  string  $config
+     * @return \ScoutEngines\Postgres\TsQuery\TsQueryable
+     */
+    public function defaultQueryMethod($query, $config)
+    {
+        switch (strtolower($this->stringConfig('search_using', 'plainquery'))) {
+            case 'tsquery':
+                return new ToTsQuery($query, $config);
+            case 'phrasequery':
+                return new PhraseToTsQuery($query, $config);
+            case 'plainquery':
+            default:
+                return new PlainToTsQuery($query, $config);
+        }
+    }
+
+    /**
+     * Pluck and return the primary keys of the given results.
+     *
+     * @param  mixed  $results
+     * @return \Illuminate\Support\Collection<int, mixed>
+     */
+    public function mapIds($results)
+    {
+        $keyName = $this->model !== null ? $this->model->getKeyName() : 'id';
+
+        /** @var array<int, object> $results */
+        return collect($results)
+            ->pluck($keyName)
+            ->values();
+    }
+
+    /**
+     * Map the given results to instances of the given model.
+     *
+     * @param  \Laravel\Scout\Builder<TModel>  $builder
+     * @param  mixed  $results
+     * @param  \Illuminate\Database\Eloquent\Model  $model
+     * @return \Illuminate\Database\Eloquent\Collection<int, TModel>
+     */
+    public function map(Builder $builder, $results, $model)
+    {
+        $resultModels = Collection::make();
+
+        if (empty($results)) {
+            return $resultModels;
+        }
+
+        $keys = $this->mapIds($results);
+
+        $models = $model->whereIn($model->getKeyName(), $keys->all())
+            ->get()
+            ->keyBy($model->getKeyName());
+
+        // The models didn't come out of the database in the correct order.
+        // This will map the models into the resultsModel based on the results order.
+        /** @var int $key */
+        foreach ($keys as $key) {
+            if ($models->has($key)) {
+                $resultModels->push($models[$key]);
+            }
+        }
+
+        return $resultModels;
+    }
+
+    /**
+     * Map the given results to instances of the given model via a lazy collection.
+     *
+     * @param  \Laravel\Scout\Builder<TModel>  $builder
+     * @param  mixed  $results
+     * @param  \Illuminate\Database\Eloquent\Model  $model
+     * @return \Illuminate\Support\LazyCollection<int, TModel>
+     */
+    public function lazyMap(Builder $builder, $results, $model)
+    {
+        // return LazyCollection::make($model->newCollection());
+        return LazyCollection::make($this->map($builder, $results, $model)->all());
+    }
+
+    /**
+     * Create a search index.
+     *
+     * @param  string  $name
+     * @param  array<mixed>  $options
+     * @return mixed
+     */
+    public function createIndex($name, $options = [])
+    {
+        throw new Exception('PostgreSQL indexes should be created through Laravel database migrations.');
+    }
+
+    /**
+     * Delete a search index.
+     *
+     * @param  string  $name
+     * @return mixed
+     */
+    public function deleteIndex($name)
+    {
+        throw new Exception('PostgreSQL indexes should be deleted through Laravel database migrations.');
+    }
+
+    /**
+     * Flush all of the model's records from the engine.
+     *
+     * @param  \Illuminate\Database\Eloquent\Model  $model
+     * @return void
+     */
+    public function flush($model)
+    {
+        if (! $this->shouldMaintainIndex($model)) {
+            return;
+        }
+
+        $indexColumn = $this->getIndexColumn($model);
+
+        $this->database
+            ->table($model->searchableAs())
+            ->update([$indexColumn => null]);
     }
 
     /**
@@ -142,82 +343,12 @@ class PostgresEngine extends Engine
     }
 
     /**
-     * Remove the given model from the index.
-     *
-     * @param  \Illuminate\Database\Eloquent\Collection  $models
-     * @return void
-     */
-    public function delete($models)
-    {
-        $model = $models->first();
-
-        if ($model) {
-            if (! $this->shouldMaintainIndex($model)) {
-                return;
-            }
-
-            $indexColumn = $this->getIndexColumn($model);
-            $key = $model->getKeyName();
-
-            $ids = $models->pluck($key)->all();
-
-            $this->database
-                ->table($model->searchableAs())
-                ->whereIn($key, $ids)
-                ->update([$indexColumn => null]);
-
-        }
-    }
-
-    /**
      * Perform the given search on the engine.
      *
-     * @return mixed
-     */
-    public function search(Builder $builder)
-    {
-        return $this->performSearch($builder, $builder->limit);
-    }
-
-    /**
-     * Perform the given search on the engine.
-     *
-     * @param  int  $perPage
-     * @param  int  $page
-     * @return mixed
-     */
-    public function paginate(Builder $builder, $perPage, $page)
-    {
-        return $this->performSearch($builder, $perPage, $page);
-    }
-
-    /**
-     * Get the total count from a raw result returned by the engine.
-     *
-     * @param  mixed  $results
-     * @return int
-     */
-    public function getTotalCount($results)
-    {
-        if (empty($results)) {
-            return 0;
-        }
-
-        /** @var array<int, object> $results */
-        /** @var object{'id': int, 'rank': string, 'total_count': int} $result */
-        $result = Arr::first($results);
-
-        return (int) $result->total_count;
-    }
-
-    /**
-     * Perform the given search on the engine.
-     *
-     * @param  int|null  $perPage
-     * @param  int  $page
+     * @param  \Laravel\Scout\Builder<TModel>  $builder
      * @return array<mixed>
      */
-    protected function performSearch(Builder $builder, $perPage = 0, $page = 1)
+    protected function performSearch(Builder $builder, ?int $perPage = 0, int $page = 1): array|null
     {
         // We have to preserve the model in order to allow for
         // correct behavior of mapIds() method which currently
@@ -281,115 +412,9 @@ class PostgresEngine extends Engine
     }
 
     /**
-     * Returns the default query method.
-     *
-     * @param  string  $query
-     * @param  string  $config
-     * @return \ScoutEngines\Postgres\TsQuery\TsQueryable
-     */
-    public function defaultQueryMethod($query, $config)
-    {
-        switch (strtolower($this->stringConfig('search_using', 'plainquery'))) {
-            case 'tsquery':
-                return new ToTsQuery($query, $config);
-            case 'phrasequery':
-                return new PhraseToTsQuery($query, $config);
-            case 'plainquery':
-            default:
-                return new PlainToTsQuery($query, $config);
-        }
-    }
-
-    /**
-     * Pluck and return the primary keys of the given results.
-     *
-     * @param  mixed  $results
-     * @return \Illuminate\Support\Collection
-     */
-    public function mapIds($results)
-    {
-        $keyName = $this->model !== null ? $this->model->getKeyName() : 'id';
-
-        /** @var array<int, object> $results */
-        return collect($results)
-            ->pluck($keyName)
-            ->values();
-    }
-
-    /**
-     * Map the given results to instances of the given model.
-     *
-     * @param  mixed  $results
-     * @param  \Illuminate\Database\Eloquent\Model  $model
-     * @return \Illuminate\Database\Eloquent\Collection
-     */
-    public function map(Builder $builder, $results, $model)
-    {
-        $resultModels = Collection::make();
-
-        if (empty($results)) {
-            return $resultModels;
-        }
-
-        $keys = $this->mapIds($results);
-
-        $models = $model->whereIn($model->getKeyName(), $keys->all())
-            ->get()
-            ->keyBy($model->getKeyName());
-
-        // The models didn't come out of the database in the correct order.
-        // This will map the models into the resultsModel based on the results order.
-        /** @var int $key */
-        foreach ($keys as $key) {
-            if ($models->has($key)) {
-                $resultModels->push($models[$key]);
-            }
-        }
-
-        return $resultModels;
-    }
-
-    /**
-     * Map the given results to instances of the given model via a lazy collection.
-     *
-     * @param  mixed  $results
-     * @param  \Illuminate\Database\Eloquent\Model  $model
-     * @return \Illuminate\Support\LazyCollection
-     */
-    public function lazyMap(Builder $builder, $results, $model)
-    {
-        return LazyCollection::make($model->newCollection());
-    }
-
-    /**
-     * Create a search index.
-     *
-     * @param  string  $name
-     * @param  array<mixed>  $options
-     * @return mixed
-     */
-    public function createIndex($name, $options = [])
-    {
-        throw new Exception('PostgreSQL indexes should be created through Laravel database migrations.');
-    }
-
-    /**
-     * Delete a search index.
-     *
-     * @param  string  $name
-     * @return mixed
-     */
-    public function deleteIndex($name)
-    {
-        throw new Exception('PostgreSQL indexes should be deleted through Laravel database migrations.');
-    }
-
-    /**
      * Connect to the database.
-     *
-     * @return void
      */
-    protected function connect()
+    protected function connect(): void
     {
         // Already connected
         if ($this->database !== null) {
@@ -476,7 +501,7 @@ class PostgresEngine extends Engine
     /**
      * See if the index should be maintained for a given model.
      */
-    protected function shouldMaintainIndex(Model $model = null): bool
+    protected function shouldMaintainIndex(?Model $model = null): bool
     {
         if ((bool) $this->config('maintain_index', true) === false) {
             return false;
@@ -507,8 +532,6 @@ class PostgresEngine extends Engine
 
     /**
      * Get the model specific option value or a default.
-     *
-     * @param  mixed  $default
      */
     protected function option(Model $model, string $key, mixed $default = null): mixed
     {
@@ -551,8 +574,6 @@ class PostgresEngine extends Engine
 
     /**
      * Get the config value or a default.
-     *
-     * @param  mixed  $default
      */
     protected function config(string $key, mixed $default = null): mixed
     {
@@ -573,50 +594,24 @@ class PostgresEngine extends Engine
         }
     }
 
-    /**
-     * @return void
-     */
-    protected function preserveModel(Model $model)
+    protected function preserveModel(Model $model): void
     {
         $this->model = $model;
     }
 
     /**
      * Returns a search config name for a model.
-     *
-     * @return string
      */
-    protected function searchConfig(Model $model)
+    protected function searchConfig(Model $model): string
     {
         return $this->stringOption($model, 'config', $this->stringConfig('config', '')) ?: '';
     }
 
     /**
      * Checks if the model uses the SoftDeletes trait.
-     *
-     * @return bool
      */
-    protected function usesSoftDeletes(Model $model)
+    protected function usesSoftDeletes(Model $model): bool
     {
         return method_exists($model, 'getDeletedAtColumn');
-    }
-
-    /**
-     * Flush all of the model's records from the engine.
-     *
-     * @param  \Illuminate\Database\Eloquent\Model  $model
-     * @return void
-     */
-    public function flush($model)
-    {
-        if (! $this->shouldMaintainIndex($model)) {
-            return;
-        }
-
-        $indexColumn = $this->getIndexColumn($model);
-
-        $this->database
-            ->table($model->searchableAs())
-            ->update([$indexColumn => null]);
     }
 }
