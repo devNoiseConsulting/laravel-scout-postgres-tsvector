@@ -10,6 +10,10 @@ use ScoutEngines\Postgres\TsQuery\PlainToTsQuery;
 use ScoutEngines\Postgres\TsQuery\ToTsQuery;
 use ScoutEngines\Postgres\TsQuery\WebSearchToTsQuery;
 
+/**
+ * @template TModel of \Illuminate\Database\Eloquent\Model
+ * @template TID of int|string
+ */
 class PostgresEngineServiceProvider extends ServiceProvider
 {
     /**
@@ -50,7 +54,7 @@ class PostgresEngineServiceProvider extends ServiceProvider
     {
         if (! Builder::hasMacro($name)) {
             Builder::macro($name, function () use ($class) {
-                /** @var Builder $this */
+                /** @var Builder<TModel> $this */
                 $this->callback = function ($builder, $config) use ($class) {
                     return new $class($builder->query, $config);
                 };
