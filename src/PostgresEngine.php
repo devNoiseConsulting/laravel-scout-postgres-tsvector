@@ -348,7 +348,7 @@ class PostgresEngine extends Engine
      * @param  \Laravel\Scout\Builder<TModel>  $builder
      * @return array<mixed>
      */
-    protected function performSearch(Builder $builder, ?int $perPage = 0, int $page = 1): array
+    protected function performSearch(Builder $builder, ?int $perPage = 0, int $page = 1): array|null
     {
         // We have to preserve the model in order to allow for
         // correct behavior of mapIds() method which currently
