@@ -372,6 +372,16 @@ class PostgresEngine extends Engine
 
         // Apply where clauses that were set on the builder instance if any
         foreach ($builder->wheres as $key => $value) {
+            if ($key == '__soft_deleted') {
+                if ($this->usesSoftDeletes($builder->model)) {
+                    if ($value == 1) {
+                        $query->whereNotNull($builder->model->getDeletedAtColumn());
+                    } else {
+                        $query->whereNull($builder->model->getDeletedAtColumn());
+                    }
+                }
+                continue;
+            }
             $query->where($key, $value);
         }
 
@@ -383,14 +393,6 @@ class PostgresEngine extends Engine
         // Apply whereNoIn clauses that were set on the builder instance if any
         foreach ($builder->whereNotIns as $key => $value) {
             $query->whereNotIn($key, $value);
-        }
-
-        // If parsed documents are being stored in the model's table
-        if (! $this->isExternalIndex($builder->model)) {
-            // and the model uses soft deletes we need to exclude trashed rows
-            if ($this->usesSoftDeletes($builder->model)) {
-                $query->whereNull($builder->model->getDeletedAtColumn());
-            }
         }
 
         // Apply order by clauses that were set on the builder instance if any
