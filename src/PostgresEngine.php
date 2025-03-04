@@ -365,9 +365,24 @@ class PostgresEngine extends Engine
             ->selectRaw('COUNT(*) OVER () AS total_count')
             ->whereRaw("{$indexColumn} @@ \"tsquery\"");
 
+        // Apply query callback if set
+        if ($builder->queryCallback) {
+            call_user_func($builder->queryCallback, $builder);
+        }
+
         // Apply where clauses that were set on the builder instance if any
         foreach ($builder->wheres as $key => $value) {
             $query->where($key, $value);
+        }
+
+        // Apply whereIn clauses that were set on the builder instance if any
+        foreach ($builder->whereIns as $key => $value) {
+            $query->whereIn($key, $value);
+        }
+
+        // Apply whereNoIn clauses that were set on the builder instance if any
+        foreach ($builder->whereNotIns as $key => $value) {
+            $query->whereNotIn($key, $value);
         }
 
         // If parsed documents are being stored in the model's table

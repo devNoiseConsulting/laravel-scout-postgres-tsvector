@@ -183,6 +183,85 @@ class PostgresEngineTest extends TestCase
     /**
      * @test
      */
+    public function search_with_queryCallback()
+    {
+        [$engine, $db] = $this->getEngine();
+
+        $skip = 0;
+        $limit = 5;
+        $table = $this->setDbExpectations($db);
+
+        $table->shouldReceive('skip')->with($skip)->andReturnSelf()
+            ->shouldReceive('limit')->with($limit)->andReturnSelf()
+            ->shouldReceive('where')->with('bar', 1)->andReturnSelf()
+            ->shouldReceive('where')->with('baz', 'qux')
+            ->shouldReceive('getBindings')->andReturn([null, 'foo', 1, 'qux']);
+
+        $db->shouldReceive('select')
+            ->with(null, $table->getBindings())
+            ->once();
+
+        $builder = new Builder(new TestModel, 'foo');
+        $builder->query(function ($q) {
+            $q->where('bar', 1)
+                ->where('baz', 'qux')
+                ->take(5);
+        });
+
+        $engine->search($builder);
+    }
+
+    /**
+     * @test
+     */
+    public function search_with_whereIn()
+    {
+        [$engine, $db] = $this->getEngine();
+
+        $skip = 0;
+        $limit = 5;
+        $table = $this->setDbExpectations($db);
+
+        $table->shouldReceive('whereIn')->with('bar', [1])->andReturnSelf()
+            ->shouldReceive('getBindings')->andReturn([null, 'foo', [1]]);
+
+        $db->shouldReceive('select')
+            ->with(null, $table->getBindings())
+            ->once();
+
+        $builder = new Builder(new TestModel, 'foo');
+        $builder->whereIn('bar', [1]);
+
+        $engine->search($builder);
+    }
+
+    /**
+     * @test
+     */
+    public function search_with_whereNotIn()
+    {
+        [$engine, $db] = $this->getEngine();
+
+        $skip = 0;
+        $limit = 5;
+        $table = $this->setDbExpectations($db);
+
+        $table->shouldReceive('whereNotIn')->with('bar', [1])->andReturnSelf()
+            ->shouldReceive('getBindings')->andReturn([null, 'foo', [1]]);
+
+        $db->shouldReceive('select')
+            ->with(null, $table->getBindings())
+            ->once();
+
+        $builder = new Builder(new TestModel, 'foo');
+        $builder->whereNotIn('bar', [1]);
+
+        $engine->search($builder);
+    }
+
+    /**
+     * @test
+     */
     public function search_with_global_config()
     {
         [$engine, $db] = $this->getEngine(['config' => 'simple']);
