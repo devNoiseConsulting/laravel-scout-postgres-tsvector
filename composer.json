@@ -29,10 +29,10 @@
     ],
     "require": {
         "php": "^8.1|^8.2|^8.3|^8.4",
-        "illuminate/contracts": "^10|^11",
-        "illuminate/database": "^10|^11",
-        "illuminate/support": "^10|^11",
-        "laravel/scout": "^10|^11"
+        "illuminate/contracts": "^10|^11|^12",
+        "illuminate/database": "^10|^11|^12",
+        "illuminate/support": "^10|^11|^12",
+        "laravel/scout": "^10|^11|^12"
     },
     "require-dev": {
         "laravel/pint": "^1.18",
