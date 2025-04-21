@@ -32,25 +32,25 @@ class PostgresEngineTest extends TestCase
         [$engine, $db] = $this->getEngine();
 
         $db->shouldReceive('query')
-            ->andReturn($query = Mockery::mock('stdClass'));
+            ->andReturn($query = Mockery::mock('stdClass'))->once();
         $query->shouldReceive('selectRaw')
             ->with(
                 'to_tsvector(COALESCE(?, get_current_ts_config()), ?) || setweight(to_tsvector(COALESCE(?, get_current_ts_config()), ?), ?) AS tsvector',
                 [null, 'Foo', null, '', 'B']
             )
-            ->andReturnSelf();
+            ->andReturnSelf()->once();
         $query->shouldReceive('value')
             ->with('tsvector')
-            ->andReturn('foo');
+            ->andReturn('foo')->once();
 
         $db->shouldReceive('table')
             ->andReturn($table = Mockery::mock('stdClass'));
         $table->shouldReceive('where')
             ->with('id', '=', 1)
-            ->andReturnSelf();
+            ->andReturnSelf()->once();
 
         $table->shouldReceive('update')
-            ->with(['searchable' => 'foo']);
+            ->with(['searchable' => 'foo'])->once();
 
         $engine->update(Collection::make([new TestModel]));
     }
@@ -62,7 +62,7 @@ class PostgresEngineTest extends TestCase
     {
         [$engine] = $this->getEngine(['maintain_index' => false]);
 
-        $engine->update(Collection::make([new TestModel]));
+        $this->assertNull($engine->update(Collection::make([new TestModel])));
     }
 
     /**
@@ -73,12 +73,15 @@ class PostgresEngineTest extends TestCase
         [$engine, $db] = $this->getEngine();
 
         $db->shouldReceive('table')
-            ->andReturn($table = Mockery::mock('stdClass'));
+            ->andReturn($table = Mockery::mock('stdClass'))
+            ->once();
         $table->shouldReceive('whereIn')
             ->with('id', [1])
-            ->andReturnSelf();
+            ->andReturnSelf()
+            ->once();
         $table->shouldReceive('update')
-            ->with(['searchable' => null]);
+            ->with(['searchable' => null])
+            ->once();
 
         $engine->delete(Collection::make([new TestModel]));
     }
@@ -142,7 +145,8 @@ class PostgresEngineTest extends TestCase
             ->shouldReceive('getBindings')->andReturn([null, 'foo', 1, 'qux']);
 
         $db->shouldReceive('select')
-            ->with(null, $table->getBindings());
+            ->with(null, $table->getBindings())
+            ->once();
 
         $builder = new Builder(new TestModel, 'foo');
         $builder->where('bar', 1)
@@ -166,11 +170,91 @@ class PostgresEngineTest extends TestCase
             ->shouldReceive('getBindings')->andReturn([null, 'foo']);
 
         $db->shouldReceive('select')
-            ->with(null, $table->getBindings());
+            ->with(null, $table->getBindings())
+            ->once();
 
         $builder = new Builder(new TestModel, 'foo');
         $builder->orderBy('bar', 'desc')
             ->orderBy('baz', 'asc');
+
+        $engine->search($builder);
+    }
+
+    /**
+     * @test
+     */
+    public function search_with_queryCallback()
+    {
+        [$engine, $db] = $this->getEngine();
+
+        $skip = 0;
+        $limit = 5;
+        $table = $this->setDbExpectations($db);
+
+        $table->shouldReceive('skip')->with($skip)->andReturnSelf()
+            ->shouldReceive('limit')->with($limit)->andReturnSelf()
+            ->shouldReceive('where')->with('bar', 1)->andReturnSelf()
+            ->shouldReceive('where')->with('baz', 'qux')
+            ->shouldReceive('getBindings')->andReturn([null, 'foo', 1, 'qux']);
+
+        $db->shouldReceive('select')
+            ->with(null, $table->getBindings())
+            ->once();
+
+        $builder = new Builder(new TestModel, 'foo');
+        $builder->query(function ($q) {
+            $q->where('bar', 1)
+                ->where('baz', 'qux')
+                ->take(5);
+        });
+
+        $engine->search($builder);
+    }
+
+    /**
+     * @test
+     */
+    public function search_with_whereIn()
+    {
+        [$engine, $db] = $this->getEngine();
+
+        $skip = 0;
+        $limit = 5;
+        $table = $this->setDbExpectations($db);
+
+        $table->shouldReceive('whereIn')->with('bar', [1])->andReturnSelf()
+            ->shouldReceive('getBindings')->andReturn([null, 'foo', [1]]);
+
+        $db->shouldReceive('select')
+            ->with(null, $table->getBindings())
+            ->once();
+
+        $builder = new Builder(new TestModel, 'foo');
+        $builder->whereIn('bar', [1]);
+
+        $engine->search($builder);
+    }
+
+    /**
+     * @test
+     */
+    public function search_with_whereNotIn()
+    {
+        [$engine, $db] = $this->getEngine();
+
+        $skip = 0;
+        $limit = 5;
+        $table = $this->setDbExpectations($db);
+
+        $table->shouldReceive('whereNotIn')->with('bar', [1])->andReturnSelf()
+            ->shouldReceive('getBindings')->andReturn([null, 'foo', [1]]);
+
+        $db->shouldReceive('select')
+            ->with(null, $table->getBindings())
+            ->once();
+
+        $builder = new Builder(new TestModel, 'foo');
+        $builder->whereNotIn('bar', [1]);
 
         $engine->search($builder);
     }
@@ -191,7 +275,7 @@ class PostgresEngineTest extends TestCase
             ->shouldReceive('where')->with('bar', 1)
             ->shouldReceive('getBindings')->andReturn(['simple', 'foo', 1]);
 
-        $db->shouldReceive('select')->with(null, $table->getBindings());
+        $db->shouldReceive('select')->with(null, $table->getBindings())->once();
 
         $builder = new Builder(new TestModel, 'foo');
         $builder->where('bar', 1)->take(5);
@@ -215,7 +299,7 @@ class PostgresEngineTest extends TestCase
             ->shouldReceive('where')->with('bar', 1)
             ->shouldReceive('getBindings')->andReturn(['english', 'foo', 1]);
 
-        $db->shouldReceive('select')->with(null, $table->getBindings());
+        $db->shouldReceive('select')->with(null, $table->getBindings())->once();
 
         $model = new TestModel;
         $model->searchableOptions['config'] = 'english';
@@ -241,7 +325,7 @@ class PostgresEngineTest extends TestCase
             ->shouldReceive('whereNull')->with('deleted_at')
             ->shouldReceive('getBindings')->andReturn([null, 'foo', 1]);
 
-        $db->shouldReceive('select')->with(null, $table->getBindings());
+        $db->shouldReceive('select')->with(null, $table->getBindings())->once();
 
         $builder = new Builder(new SoftDeletableTestModel, 'foo');
         $builder->where('bar', 1)->take(5);
