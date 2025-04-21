@@ -38,7 +38,7 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  composer remove nunomaduro/larastan --dev --no-update
+                  composer remove larastan/larastan --dev --no-update
                   composer remove orchestra/testbench --dev --no-update
                   composer remove tightenco/duster --dev --no-update
                   composer remove laravel/pint --dev --no-update
