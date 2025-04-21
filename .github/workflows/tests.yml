@@ -1,52 +1,52 @@
 name: tests
 
 on:
-  push:
-    branches:
-      - master
-      - 9.x
-  pull_request:
+    push:
+        branches:
+            - master
+            - 9.x
+    pull_request:
 
 jobs:
-  tests:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        php: [8.1, 8.2, 8.3, 8.4]
-        laravel: [^10, ^11]
-        scout: [^10]
-        exclude:
-          - php: 8.1
-            laravel: ^11
-          - php: 8.4
-            laravel: ^10
+    tests:
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: true
+            matrix:
+                php: [8.1, 8.2, 8.3, 8.4]
+                laravel: [^10, ^11, ^12]
+                scout: [^10]
+                exclude:
+                    - php: 8.1
+                      laravel: ^11
+                    - php: 8.4
+                      laravel: ^10
 
-    name: Test PHP ${{ matrix.php }} - Laravel ${{ matrix.laravel }} - Scout ${{ matrix.scout }}
+        name: Test PHP ${{ matrix.php }} - Laravel ${{ matrix.laravel }} - Scout ${{ matrix.scout }}
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v3
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ matrix.php }}
-          extensions: dom, curl, libxml, mbstring, zip
-          tools: composer:v2
-          coverage: none
+            - name: Setup PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: ${{ matrix.php }}
+                  extensions: dom, curl, libxml, mbstring, zip
+                  tools: composer:v2
+                  coverage: none
 
-      - name: Install dependencies
-        run: |
-          composer remove nunomaduro/larastan --dev --no-update
-          composer remove orchestra/testbench --dev --no-update
-          composer remove tightenco/duster --dev --no-update
-          composer remove laravel/pint --dev --no-update
-          composer require "illuminate/contracts=${{ matrix.laravel }}" --no-update
-          composer require "illuminate/database=${{ matrix.laravel }}" --no-update
-          composer require "illuminate/support=${{ matrix.laravel }}" --no-update
-          composer require "laravel/scout=${{ matrix.scout }}" --no-update
-          composer update --prefer-dist --no-interaction --no-progress
+            - name: Install dependencies
+              run: |
+                  composer remove nunomaduro/larastan --dev --no-update
+                  composer remove orchestra/testbench --dev --no-update
+                  composer remove tightenco/duster --dev --no-update
+                  composer remove laravel/pint --dev --no-update
+                  composer require "illuminate/contracts=${{ matrix.laravel }}" --no-update
+                  composer require "illuminate/database=${{ matrix.laravel }}" --no-update
+                  composer require "illuminate/support=${{ matrix.laravel }}" --no-update
+                  composer require "laravel/scout=${{ matrix.scout }}" --no-update
+                  composer update --prefer-dist --no-interaction --no-progress
 
-      - name: Run tests
-        run: vendor/bin/phpunit --verbose
+            - name: Run tests
+              run: vendor/bin/phpunit --verbose

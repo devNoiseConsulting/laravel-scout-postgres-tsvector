@@ -16,6 +16,6 @@ parameters:
 
 		-
 			message: "#^Call to an undefined method TModel of Illuminate\\\\Database\\\\Eloquent\\\\Model\\:\\:getDeletedAtColumn\\(\\)\\.$#"
-			count: 1
+			count: 2
 			path: src/PostgresEngine.php
 

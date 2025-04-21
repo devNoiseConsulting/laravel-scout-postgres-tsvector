@@ -35,11 +35,11 @@
         "laravel/scout": "^10|^11|^12"
     },
     "require-dev": {
-        "laravel/pint": "^1.18",
+        "larastan/larastan": "^3.3",
+        "laravel/pint": "^1.22",
         "mockery/mockery": "^1.6",
-        "nunomaduro/larastan": "^2.9",
-        "orchestra/testbench": "^8.28",
-        "phpunit/phpunit": "^9.6",
+        "orchestra/testbench": "^10.2",
+        "phpunit/phpunit": "^12.1",
         "tightenco/duster": "^2.7"
     },
     "autoload": {
